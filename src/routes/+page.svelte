@@ -1,22 +1,14 @@
 <script>
-  import { onMount } from "svelte";
-  const endpoint = "https://jsonplaceholder.typicode.com/posts";
-  let posts = [];
-  let stopPlace = [];
-  onMount(async function () {
-    const res = await fetch("https://api.entur.io/journey-planner/v3/graphql", {
-        method: "POST", // *GET, POST, PUT, DELETE, etc.
-        headers: {
-        "Content-Type": "application/json",
-        "ET-Client-Name" : "mroneid/personal-test-app",
-        // 'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: JSON.stringify({
+    import { onMount, onDestroy } from 'svelte';
+  
+    let data = [];
+    let posts = [];
+    let queryBody = {
             query: `{
                 stopPlace(id: "NSR:StopPlace:5947") {
                 id
                 name
-                estimatedCalls(timeRange: 72100, numberOfDepartures: 10) {
+                estimatedCalls(timeRange: 72100, numberOfDepartures: 5) {
                     realtime
                     aimedArrivalTime
                     aimedDepartureTime
@@ -32,6 +24,7 @@
                     }
                     quay {
                     id
+                    publicCode
                     name
 
                     }
@@ -54,34 +47,85 @@
             }
             `,
 
-        }),
-        });    
-    const data = await res.json();
-    stopPlace = data.data.stopPlace;
-    posts = data.data.stopPlace.estimatedCalls;
-    console.log(posts);
-  });
-
-  export let name;
-  
-</script>
-
-
-
-<h1>{stopPlace.name}</h1>
-
-{#each posts as post}
-<div>
-  <p>[{post.serviceJourney.journeyPattern.line.publicCode}] {post.destinationDisplay.frontText} - {post.expectedDepartureTime}</p>
-</div>
-{/each}
-<h1 class="text-3xl font-bold underline">
-    Hello world!
-  </h1>
-
-<style lang="postcss">
-    :global(html) {
-      background-color: theme(colors.gray.100);
+        };
+    async function fetchData() {
+      try {
+        const response = await fetch("https://api.entur.io/journey-planner/v3/graphql", {
+            method: "POST", // *GET, POST, PUT, DELETE, etc.
+            headers: {
+                "Content-Type": "application/json",
+                "ET-Client-Name" : "mroneid/personal-test-app",
+                // 'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: JSON.stringify(queryBody),
+        }); 
+        data = await response.json();
+        posts = data.data.stopPlace.estimatedCalls;
+        // Calculate the time difference in minutes
+        const now = new Date();
+        data = posts.map(item => {
+            const apiTime = new Date(item.expectedDepartureTime);
+            const diffInMinutes = Math.floor((apiTime - now) / (1000 * 60));
+            return {
+            ...item,
+            diffInMinutes
+            };
+        });
+        console.log(posts);
+      } catch (error) {
+        console.error(error);
+      }
     }
+  
+    // Fetch the data when the component is mounted
+    onMount(fetchData);
+  
+    // Set up auto-reloading
+    const reloadInterval = setInterval(fetchData, 60000);
+  
+    // Clean up the interval when the component is destroyed
+    onDestroy(() => {
+      clearInterval(reloadInterval);
+    });
+  </script>
 
-</style>
+<main>
+    <ul>        
+            {#if data.length > 0}
+            <div class="grid grid-rows-6 grid-cols-4 gap-4">
+                <div class="font-black">Linje</div>
+                <div class="font-black">Retning</div>
+                <div class="font-black">Tid til avgang</div>
+                <div class="font-black">Plattform</div>
+              
+                {#each data as post}                
+                <div><span class="inline-flex items-center rounded-md bg-ruter-orange px-3 py-0 text-sm font-sans font-medium text-white ring-1 ring-inset ring-red-600/10">
+                    {post.serviceJourney.journeyPattern.line.publicCode}
+                </span></div>
+                <div class="">{post.destinationDisplay.frontText}</div>
+                <div class="">{post.diffInMinutes} min</div>
+                <div class="">{post.quay.publicCode}</div>
+                 
+
+                    {/each}
+                    </div>
+            {:else}
+              <p>Loading...</p>
+            {/if}
+ 
+          
+    </ul>
+
+  </main>
+  
+  <style>
+    
+    ul {
+      list-style-type: none;
+      padding: 0;
+    }
+  
+    li {
+      margin-bottom: 0.5rem;
+    }
+  </style>
